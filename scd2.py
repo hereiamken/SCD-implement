@@ -3,6 +3,7 @@ from params import *
 from pyspark.sql.functions import *
 from pyspark.sql.window import Window
 from pyspark.sql import SparkSession
+from mysql.connector import *
 
 spark = SparkSession.builder.master(
     "local[1]").appName("scd_type2").getOrCreate()
