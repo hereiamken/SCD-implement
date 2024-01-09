@@ -33,3 +33,10 @@ def get_hash(df, keys_list):
         return df.withColumn("hash_md5", md5(concat_ws("", *columns)))
     else:
         return df.withColumn("hash_md5", md5(lit(1)))
+
+
+def format_columns_name(df, key_list):
+    columns = []
+    for column in key_list:
+        columns.append(column.strip().lower())
+    return df.toDF(*columns)

@@ -19,6 +19,7 @@ def apply_initial(spark):
         .withColumn("expiration_date", date_format(lit(EOW_DATE), DATE_FORMAT))\
         .withColumn("current_flag", lit(True))
     # .withColumn("sk_customer_id", row_number().over(window_spec))\
+    df_current_renamed = 
 
     df_current.write.mode('overwrite')\
         .option("header", True)\
