@@ -1,8 +1,8 @@
 EOW_DATE = "9999-12-31"
-SOURCE_PATH = "/Users/trankiendang/Projects/SCD-implement/data/Mall_Customers.csv"
-SOURCE_CHANGED_PATH = "/Users/trankiendang/Projects/SCD-implement/data/Mall_Customers_changed.csv"
-DEST_PATH = "/Users/trankiendang/Projects/SCD-implement/dest/"
-TEMP_PATH = "/Users/trankiendang/Projects/SCD-implement/temp"
+SOURCE_PATH = "D:/Workspace/SCD-implement/data/Mall_Customers.csv"
+SOURCE_CHANGED_PATH = "D:/Workspace/SCD-implement/data\Mall_Customers_changed.csv"
+DEST_PATH = "D:/Workspace/SCD-implement/dest"
+TEMP_PATH = "D:/Workspace/SCD-implement/temp"
 KEY_LIST = ["CustomerID"]
 type2_cols = ["CustomerID", "Genre", "Age",
               "Annual_Income_(k$)", "Spending_Score"]

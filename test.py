@@ -14,5 +14,5 @@ spark = SparkSession.builder.master(
     "local[1]").appName("test").getOrCreate()
 
 connect.conn()
-# apply_initial(spark)
+apply_initial(spark)
 # apply_incremental(spark)

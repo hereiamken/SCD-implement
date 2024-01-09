@@ -39,4 +39,6 @@ def format_columns_name(df, key_list):
     columns = []
     for column in key_list:
         columns.append(column.strip().lower())
+    print(columns)
     return df.toDF(*columns)
+

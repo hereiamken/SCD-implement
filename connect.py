@@ -5,7 +5,7 @@ import mysql.connector
 config = {
     "host": "127.0.0.1",
     "user": "root",
-    "password": "dev1kEn30.",
+    "password": "123456",
     "database": "scd_impl",
 }
 
@@ -48,6 +48,18 @@ def connect_to_mysql(config, attempts=3, delay=2):
             time.sleep(delay ** attempt)
             attempt += 1
     return None
+
+
+def create_table():
+    customer_script = "CREATE TABLE IF NOT EXISTS `customer` ("
+    "  `emp_no` int(11) NOT NULL AUTO_INCREMENT,"
+    "  `birth_date` date NOT NULL,"
+    "  `first_name` varchar(14) NOT NULL,"
+    "  `last_name` varchar(16) NOT NULL,"
+    "  `gender` enum('M','F') NOT NULL,"
+    "  `hire_date` date NOT NULL,"
+    "  PRIMARY KEY (`emp_no`)"
+    ") ENGINE=InnoDB"
 
 
 def conn():

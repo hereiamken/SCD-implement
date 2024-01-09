@@ -1,9 +1,11 @@
-from common import get_hash, get_suffix_name
-from params import *
+from common import format_columns_name, get_hash, get_suffix_name
 from pyspark.sql.functions import *
 from pyspark.sql.window import Window
 from pyspark.sql import SparkSession
 from mysql.connector import *
+from params import *
+
+from params import DATE_FORMAT, DEST_PATH, EOW_DATE, SOURCE_CHANGED_PATH, SOURCE_PATH
 
 spark = SparkSession.builder.master(
     "local[1]").appName("scd_type2").getOrCreate()
@@ -19,12 +21,9 @@ def apply_initial(spark):
         .withColumn("expiration_date", date_format(lit(EOW_DATE), DATE_FORMAT))\
         .withColumn("current_flag", lit(True))
     # .withColumn("sk_customer_id", row_number().over(window_spec))\
-    df_current_renamed = 
+    df_current_renamed = format_columns_name(df_current, df_current.columns)
 
-    df_current.write.mode('overwrite')\
-        .option("header", True)\
-        .option("delimiter", ",")\
-        .csv(DEST_PATH)
+    df_current_renamed.show()
 
 
 def apply_incremental(spark):
