@@ -52,12 +52,12 @@ def connect_to_mysql(config, attempts=3, delay=2):
 
 def create_table():
     customer_script = "CREATE TABLE IF NOT EXISTS `customer` ("
-    "  `emp_no` int(11) NOT NULL AUTO_INCREMENT,"
-    "  `birth_date` date NOT NULL,"
-    "  `first_name` varchar(14) NOT NULL,"
-    "  `last_name` varchar(16) NOT NULL,"
-    "  `gender` enum('M','F') NOT NULL,"
-    "  `hire_date` date NOT NULL,"
+    "  `id` long NOT NULL AUTO_INCREMENT,"
+    "  `customer_id` long NOT NULL,"
+    "  `genre` varchar(14) DEFAULT NULL,"
+    "  `age` int DEFAULT NULL,"
+    "  `annual_income_(k$)` int DEFAULT NULL,"
+    "  `spending_score` date NOT NULL,"
     "  PRIMARY KEY (`emp_no`)"
     ") ENGINE=InnoDB"
 
