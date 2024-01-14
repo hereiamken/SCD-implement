@@ -40,6 +40,4 @@ def format_columns_name(df, key_list):
     for column in key_list:
         if column:
             columns.append(column.strip().lower())
-    print(columns)
     return df.toDF(*columns)
-

@@ -3,17 +3,20 @@ from pyspark.sql.functions import *
 from pyspark.sql.window import Window
 from pyspark.sql import SparkSession
 from mysql.connector import *
+from connect import PASSWORD, USER
 from params import *
 
 from params import DATE_FORMAT, DEST_PATH, EOW_DATE, SOURCE_CHANGED_PATH, SOURCE_PATH
 
-spark = SparkSession.builder.master(
-    "local[1]").appName("scd_type2").getOrCreate()
+spark = SparkSession.builder\
+    .appName('scd_type2')\
+    .config("spark.jars", "mysql-connector-j-8.2.0.jar")\
+    .getOrCreate()
 
 window_spec = Window.orderBy("CustomerID")
 
 
-def apply_initial(spark):
+def apply_initial():
     df_current = spark.read.options(
         header=True, delimiter=',', inferSchema='True')\
         .csv(SOURCE_PATH)\
@@ -23,17 +26,44 @@ def apply_initial(spark):
     # .withColumn("sk_customer_id", row_number().over(window_spec))\
     df_current_renamed = format_columns_name(df_current, df_current.columns)
 
-    df_current_renamed.show()
+    df_current_renamed.write \
+        .format("jdbc") \
+        .mode("append") \
+        .option("driver", "com.mysql.cj.jdbc.Driver") \
+        .option("url", "jdbc:mysql://localhost:3306/scd_impl") \
+        .option("dbtable", "customer") \
+        .option("user", USER) \
+        .option("password", PASSWORD) \
+        .save()
 
 
 def apply_incremental(spark):
+    df_columns = spark.read.options(header=True, delimiter=',', inferSchema='True')\
+        .csv(SOURCE_PATH).columns
+    df_columns.append('effective_date')
+    df_columns.append('expiration_date')
+    df_columns.append('current_flag')
+
+    columns = []
+    for column in df_columns:
+        if column:
+            columns.append(column.strip().lower())
+    print(columns)
+
     df_current = spark.read.options(header=True, delimiter=',', inferSchema='True')\
         .csv(SOURCE_CHANGED_PATH)
 
-    df_history = spark.read.options(header=True, delimiter=',', inferSchema='True')\
-        .csv(DEST_PATH)\
-        .withColumn("effective_date", to_date("effective_date"))\
-        .withColumn("expiration_date", to_date("expiration_date"))
+    df_current_renamed = format_columns_name(df_current, df_current.columns)
+
+    df_history = spark.read \
+        .format("jdbc") \
+        .option("driver", "com.mysql.cj.jdbc.Driver") \
+        .option("url", "jdbc:mysql://localhost:3306/scd_impl") \
+        .option("dbtable", "customer") \
+        .option("user", USER) \
+        .option("password", PASSWORD) \
+        .load()\
+        .select(columns)
 
     # max_sk = df_history.agg({"sk_customer_id": "max"}).collect()[0][0]
 
@@ -45,7 +75,7 @@ def apply_incremental(spark):
     df_history_active_hash = get_suffix_name(
         get_hash(df_history_active, type2_cols), suffix="_history", append=True)
     df_current_hash = get_suffix_name(
-        get_hash(df_current, type2_cols), suffix="_current", append=True)
+        get_hash(df_current_renamed, type2_cols), suffix="_current", append=True)
 
     # Apply full outer join to df_history and current dataframes
     # Create a new column which will be used to flag records
@@ -54,10 +84,10 @@ def apply_incremental(spark):
     # 3. If CustomerID at df_history is null then INSERT
     # 4. Else UPDATE
     df_merged = df_history_active_hash.join(df_current_hash,
-                                            df_history_active_hash.CustomerID_history == df_current_hash.CustomerID_current, "fullouter")\
+                                            df_history_active_hash.customerid_history == df_current_hash.customerid_current, "fullouter")\
         .withColumn("Action", when(df_current_hash.hash_md5_current == df_history_active_hash.hash_md5_history, 'NOCHANGE')
-                    .when(df_current_hash.CustomerID_current.isNull(), 'DELETE')
-                    .when(df_history_active_hash.CustomerID_history.isNull(), 'INSERT')
+                    .when(df_current_hash.customerid_current.isNull(), 'DELETE')
+                    .when(df_history_active_hash.customerid_history.isNull(), 'INSERT')
                     .otherwise('UPDATE'))
 
     # Get data with no change
@@ -66,13 +96,24 @@ def apply_incremental(spark):
 
     # Get data new inserted
     df_inserted = get_suffix_name(df_merged.where(col("Action") == 'INSERT'), suffix="_current", append=False)\
-        .select(df_current.columns)\
+        .select(df_current_renamed.columns)\
         .withColumn("effective_date", date_format(current_date(), DATE_FORMAT))\
         .withColumn("expiration_date", date_format(lit(EOW_DATE), DATE_FORMAT))\
         .withColumn("current_flag", lit(True))
+
+    # Insert new data
+    df_inserted.write \
+        .format("jdbc") \
+        .mode("append") \
+        .option("driver", "com.mysql.cj.jdbc.Driver") \
+        .option("url", "jdbc:mysql://localhost:3306/scd_impl") \
+        .option("dbtable", "customer") \
+        .option("user", USER) \
+        .option("password", PASSWORD) \
+        .save()
+
     # .withColumn("row_number", row_number().over(window_spec))\
     # .withColumn("sk_customer_id", col("row_number") + max_sk)\
-
     # Get data has been deleted
     df_deleted = get_suffix_name(df_merged.where(col("Action") == 'DELETE'), suffix="_history", append=False)\
         .select(df_history_active.columns)\
@@ -87,7 +128,7 @@ def apply_incremental(spark):
         .withColumn("current_flag", lit(False))
 
     df_updated_current = get_suffix_name(df_merged.filter(col("action") == 'UPDATE'), suffix="_current", append=False)\
-        .select(df_current.columns)\
+        .select(df_current_renamed.columns)\
         .withColumn("effective_date", date_format(current_date(), DATE_FORMAT))\
         .withColumn("expiration_date", date_format(lit(EOW_DATE), DATE_FORMAT))\
         .withColumn("current_flag", lit(True))

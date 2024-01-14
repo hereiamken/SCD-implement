@@ -5,14 +5,9 @@ from scd2 import *
 import connect as connect
 
 # Create SparkSession
-# spark = SparkSession.builder \
-#     .appName('SparkByExamples.com') \
-#     .config("spark.jars", "mysql-connector-java-8.0.13.jar")\
-#     .getOrCreate()
-
 spark = SparkSession.builder.master(
-    "local[1]").appName("test").getOrCreate()
+    "local[1]").appName("SCD_impl").getOrCreate()
 
 connect.conn()
-apply_initial(spark)
-# apply_incremental(spark)
+# apply_initial()
+apply_incremental(spark)
