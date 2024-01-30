@@ -36,8 +36,13 @@ def get_hash(df, keys_list):
 
 
 def format_columns_name(df, key_list):
+    columns = format_columns(key_list)
+    return df.toDF(*columns)
+
+
+def format_columns(key_list):
     columns = []
     for column in key_list:
         if column:
             columns.append(column.strip().lower())
-    return df.toDF(*columns)
+    return columns

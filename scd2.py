@@ -1,9 +1,9 @@
-from common import format_columns_name, get_hash, get_suffix_name
+from common import format_columns, format_columns_name, get_hash, get_suffix_name
 from pyspark.sql.functions import *
 from pyspark.sql.window import Window
 from pyspark.sql import SparkSession
 from mysql.connector import *
-from connect import PASSWORD, USER
+from connect import PASSWORD, USER, process_many_rows, process_many_rows_1, process_row
 from params import *
 
 from params import DATE_FORMAT, DEST_PATH, EOW_DATE, SOURCE_CHANGED_PATH, SOURCE_PATH
@@ -20,6 +20,7 @@ def apply_initial():
     df_current = spark.read.options(
         header=True, delimiter=',', inferSchema='True')\
         .csv(SOURCE_PATH)\
+        .withColumn("sk_customerid", row_number().over(window_spec))\
         .withColumn("effective_date", date_format(current_date(), DATE_FORMAT))\
         .withColumn("expiration_date", date_format(lit(EOW_DATE), DATE_FORMAT))\
         .withColumn("current_flag", lit(True))
@@ -28,7 +29,7 @@ def apply_initial():
 
     df_current_renamed.write \
         .format("jdbc") \
-        .mode("append") \
+        .mode("overwrite") \
         .option("driver", "com.mysql.cj.jdbc.Driver") \
         .option("url", "jdbc:mysql://localhost:3306/scd_impl") \
         .option("dbtable", "customer") \
@@ -43,12 +44,9 @@ def apply_incremental(spark):
     df_columns.append('effective_date')
     df_columns.append('expiration_date')
     df_columns.append('current_flag')
+    df_columns.append('sk_customerid')
 
-    columns = []
-    for column in df_columns:
-        if column:
-            columns.append(column.strip().lower())
-    print(columns)
+    columns = format_columns(df_columns)
 
     df_current = spark.read.options(header=True, delimiter=',', inferSchema='True')\
         .csv(SOURCE_CHANGED_PATH)
@@ -65,7 +63,9 @@ def apply_incremental(spark):
         .load()\
         .select(columns)
 
-    # max_sk = df_history.agg({"sk_customer_id": "max"}).collect()[0][0]
+    # Keep track of the maximum surrogate key in the history table
+    # as it will be used to create a surrogate key for newly inserted and updated records.
+    max_history_sk = df_history.agg({"sk_customerid": "max"}).collect()[0][0]
 
     # Get current data at Destination with active and non-active data
     df_history_active = df_history.where(col("current_flag") == lit(True))
@@ -99,39 +99,50 @@ def apply_incremental(spark):
         .select(df_current_renamed.columns)\
         .withColumn("effective_date", date_format(current_date(), DATE_FORMAT))\
         .withColumn("expiration_date", date_format(lit(EOW_DATE), DATE_FORMAT))\
-        .withColumn("current_flag", lit(True))
+        .withColumn("row_number", row_number().over(window_spec))\
+        .withColumn("sk_customerid", col("row_number") + max_history_sk)\
+        .withColumn("current_flag", lit(True))\
+        .drop("row_number")
 
-    # Insert new data
-    df_inserted.write \
-        .format("jdbc") \
-        .mode("append") \
-        .option("driver", "com.mysql.cj.jdbc.Driver") \
-        .option("url", "jdbc:mysql://localhost:3306/scd_impl") \
-        .option("dbtable", "customer") \
-        .option("user", USER) \
-        .option("password", PASSWORD) \
-        .save()
+    if df_inserted.count() > 0:
+        process_many_rows(df=df_inserted, table_name='customer',
+                          change_type='INSERT')
 
-    # .withColumn("row_number", row_number().over(window_spec))\
-    # .withColumn("sk_customer_id", col("row_number") + max_sk)\
+    max_insert_sk = df_inserted.agg({"sk_customerid": "max"}).collect()[0][0]
     # Get data has been deleted
     df_deleted = get_suffix_name(df_merged.where(col("Action") == 'DELETE'), suffix="_history", append=False)\
         .select(df_history_active.columns)\
         .withColumn("expiration_date", date_format(current_date(), DATE_FORMAT))\
         .withColumn("current_flag", lit(False))
 
+    if df_deleted.count() > 0:
+        process_many_rows(df=df_deleted, table_name='customer',
+                          change_type='UPDATE')
+
     # Get data has been updated
     df_updated_history = get_suffix_name(df_merged.where(
         col("Action") == 'UPDATE'), suffix="_history", append=False)\
         .select(df_history_active.columns)\
+        .withColumn("effective_date", date_format("effective_date", DATE_FORMAT))\
         .withColumn("expiration_date", date_format(current_date(), DATE_FORMAT))\
         .withColumn("current_flag", lit(False))
+
+    if df_updated_history.count() > 0:
+        process_many_rows(df=df_updated_history,
+                          table_name='customer', change_type='INSERT')
 
     df_updated_current = get_suffix_name(df_merged.filter(col("action") == 'UPDATE'), suffix="_current", append=False)\
         .select(df_current_renamed.columns)\
         .withColumn("effective_date", date_format(current_date(), DATE_FORMAT))\
         .withColumn("expiration_date", date_format(lit(EOW_DATE), DATE_FORMAT))\
-        .withColumn("current_flag", lit(True))
+        .withColumn("row_number", row_number().over(window_spec))\
+        .withColumn("sk_customerid", col("row_number") + max_insert_sk)\
+        .withColumn("current_flag", lit(True))\
+        .drop("row_number")
+
+    if df_updated_current.count() > 0:
+        process_many_rows(df=df_updated_current,
+                          table_name='customer', change_type='UPDATE')
 
     df_updated = df_updated_history.unionByName(df_updated_current)
 
@@ -140,10 +151,5 @@ def apply_incremental(spark):
         .unionByName(df_deleted)\
         .unionByName(df_inserted)\
         .unionByName(df_updated)
-
-    df_final.write.mode('overwrite')\
-        .option("header", True)\
-        .option("delimiter", ",")\
-        .csv(TEMP_PATH)
 
     print(df_final.count())
